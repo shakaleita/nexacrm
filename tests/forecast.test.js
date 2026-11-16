@@ -17,3 +17,9 @@ test('rejects invalid or negative stored deal data',()=>{
  assert.throws(()=>forecast([{stage:'proposal',value:-1}]),TypeError);
  assert.throws(()=>forecast([{stage:'fake',value:10}]),TypeError);
 });
+
+test('rejects monetary values outside supported accounting range',()=>{
+  assert.throws(()=>forecast([{stage:'new',value:1000000001}]),TypeError);
+  const oversized=Array.from({length:100000},()=>({stage:'won',value:1000000000}));
+  assert.throws(()=>forecast(oversized),RangeError);
+});
