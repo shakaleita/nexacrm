@@ -4,6 +4,22 @@ CREATE TABLE IF NOT EXISTS contacts(id INTEGER PRIMARY KEY,name TEXT NOT NULL,em
 CREATE TABLE IF NOT EXISTS deals(id INTEGER PRIMARY KEY,title TEXT NOT NULL,value REAL NOT NULL DEFAULT 0,stage TEXT NOT NULL DEFAULT 'new',contact_id INTEGER REFERENCES contacts(id));
 CREATE TABLE IF NOT EXISTS activities(id INTEGER PRIMARY KEY,contact_id INTEGER NOT NULL REFERENCES contacts(id),note TEXT NOT NULL,due_date TEXT NOT NULL,done INTEGER NOT NULL DEFAULT 0);`);
 app.disable('x-powered-by');app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('Referrer-Policy','no-referrer');res.set('X-Frame-Options','DENY');next()});app.use(express.json({limit:'32kb'}));app.use(express.static('public'));
+
+const crypto = require('node:crypto');
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  const required = process.env.API_TOKEN;
+  if (!required && process.env.APP_ENV !== 'production') return next();
+  if (!required) return res.status(503).json({error:'API authentication must be configured in production'});
+  const actual = req.get('x-api-token') || '';
+  const expectedBytes = Buffer.from(required, 'utf8');
+  const actualBytes = Buffer.from(actual, 'utf8');
+  if (expectedBytes.length !== actualBytes.length || !crypto.timingSafeEqual(expectedBytes, actualBytes)) {
+    return res.status(401).json({error:'Unauthorized'});
+  }
+  next();
+});
+
 const wrap=f=>(req,res)=>{try{res.json(f(req,res))}catch(e){res.status(400).json({error:e.message})}};
 app.get('/api/companies',wrap(()=>db.prepare('SELECT * FROM companies ORDER BY id DESC').all()));
 app.post('/api/companies',wrap(req=>{if(!req.body.name?.trim())throw Error('Company name required');return db.prepare('INSERT INTO companies(name,industry) VALUES(?,?)').run(req.body.name.trim(),req.body.industry||null)}));
