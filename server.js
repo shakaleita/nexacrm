@@ -32,6 +32,20 @@ app.get('/api/activities',wrap(()=>db.prepare('SELECT activities.*,contacts.name
 app.post('/api/activities',wrap(req=>{const {contact_id,note,due_date}=req.body;if(!contact_id||!note?.trim()||!/\d{4}-\d{2}-\d{2}/.test(due_date||''))throw Error('Contact, note and due date required');return db.prepare('INSERT INTO activities(contact_id,note,due_date) VALUES(?,?,?)').run(contact_id,note.trim(),due_date)}));
 app.patch('/api/activities/:id/done',wrap(req=>{const r=db.prepare('UPDATE activities SET done=1 WHERE id=?').run(req.params.id);if(!r.changes)throw Error('Activity not found');return {updated:true}}));
 
+// Safe, read-only CSV export for the local companies dataset.
+app.get('/api/export/companies.csv', (_req,res)=>{
+  try {
+    const {serialize}=require('./lib/csv');
+    const stmt=db.prepare("SELECT id,name,industry FROM companies ORDER BY id");
+    const rows=stmt.all();
+    const columns=stmt.columns().map(column=>column.name);
+    res.set('Content-Type','text/csv; charset=utf-8');
+    res.set('Content-Disposition','attachment; filename="companies.csv"');
+    res.set('Cache-Control','no-store');
+    res.send(serialize(rows,columns));
+  }catch(_error){res.status(500).json({error:'CSV export unavailable'})}
+});
+
 // Lightweight service introspection: intentionally no secrets or database contents.
 app.get('/api/health',(_req,res)=>{try{db.prepare('SELECT 1').get();res.json({status:'ok',service:process.env.npm_package_name||'portfolio-service'})}catch(_e){res.status(503).json({status:'unavailable'})}});
 app.get('/api/insights',(_req,res)=>{try{res.json((()=>{ const companies=db.prepare('SELECT COUNT(*) n FROM companies').get().n;const contacts=db.prepare('SELECT COUNT(*) n FROM contacts').get().n;const stages=db.prepare('SELECT stage,COUNT(*) count,ROUND(SUM(value),2) value FROM deals GROUP BY stage ORDER BY stage').all();const overdue=db.prepare("SELECT COUNT(*) n FROM activities WHERE done=0 AND due_date < date('now')").get().n;return {companies,contacts,deals_by_stage:stages,overdue_followups:overdue}; })())}catch(_e){res.status(500).json({error:'Unable to load insights'})}});
