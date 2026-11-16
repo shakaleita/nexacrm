@@ -78,6 +78,14 @@ app.get('/api/export/companies.csv', (_req,res)=>{
 
 // Lightweight service introspection: intentionally no secrets or database contents.
 app.get('/api/health',(_req,res)=>{try{db.prepare('SELECT 1').get();res.json({status:'ok',service:process.env.npm_package_name||'portfolio-service'})}catch(_e){res.status(503).json({status:'unavailable'})}});
+app.get('/api/forecast',(_req,res)=>{
+  try {
+    const {forecast}=require('./lib/forecast');
+    const deals=db.prepare('SELECT stage,value FROM deals').all();
+    res.set('Cache-Control','no-store');
+    res.json(forecast(deals));
+  }catch(_error){res.status(500).json({error:'Unable to calculate forecast'})}
+});
 app.get('/api/insights',(_req,res)=>{try{res.json((()=>{ const companies=db.prepare('SELECT COUNT(*) n FROM companies').get().n;const contacts=db.prepare('SELECT COUNT(*) n FROM contacts').get().n;const stages=db.prepare('SELECT stage,COUNT(*) count,ROUND(SUM(value),2) value FROM deals GROUP BY stage ORDER BY stage').all();const overdue=db.prepare("SELECT COUNT(*) n FROM activities WHERE done=0 AND due_date < date('now')").get().n;return {companies,contacts,deals_by_stage:stages,overdue_followups:overdue}; })())}catch(_e){res.status(500).json({error:'Unable to load insights'})}});
 app.use((err,req,res,next)=>{if(err&&err.type==='entity.too.large')return res.status(413).json({error:'Request body too large'});if(err instanceof SyntaxError && 'body' in err)return res.status(400).json({error:'Malformed JSON'});return res.status(500).json({error:'Unexpected server error'})});
 app.listen(Number(process.env.PORT)||3000,()=>console.log('NexaCRM running'));
